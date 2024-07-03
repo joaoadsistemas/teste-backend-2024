@@ -2,8 +2,10 @@ package products
 
 import (
 	"context"
+	"fmt"
 	"ms-go/app/helpers"
 	"ms-go/app/models"
+	"ms-go/app/producers"
 	"ms-go/db"
 	"net/http"
 	"time"
@@ -12,7 +14,6 @@ import (
 )
 
 func Update(data models.Product, isAPI bool) (*models.Product, error) {
-
 	if data.ID == 0 {
 		return nil, &helpers.GenericError{Msg: "Missing parameters", Code: http.StatusUnprocessableEntity}
 	}
@@ -24,8 +25,15 @@ func Update(data models.Product, isAPI bool) (*models.Product, error) {
 	}
 
 	data.UpdatedAt = time.Now()
-
 	setUpdate(&data, &product)
+
+	topic := "go-to-rails"
+	err := producers.ProduceMessage(topic, data)
+	if err != nil {
+		fmt.Printf("Error producing message for topic %s: %v\n", topic, err)
+	}
+
+	fmt.Println("Message successfully sent to topic", topic)
 
 	if err := db.Connection().FindOneAndUpdate(context.TODO(), bson.M{"id": data.ID}, bson.M{"$set": data}).Decode(&product); err != nil {
 		return nil, &helpers.GenericError{Msg: err.Error(), Code: http.StatusInternalServerError}
@@ -33,11 +41,6 @@ func Update(data models.Product, isAPI bool) (*models.Product, error) {
 
 	if err := db.Connection().FindOne(context.TODO(), bson.M{"id": data.ID}).Decode(&product); err != nil {
 		return nil, &helpers.GenericError{Msg: "Product Not Found", Code: http.StatusNotFound}
-	}
-
-	defer db.Disconnect()
-
-	if isAPI {
 	}
 
 	return &product, nil
@@ -65,6 +68,5 @@ func setUpdate(new, old *models.Product) {
 	}
 
 	new.CreatedAt = old.CreatedAt
-
 	new.UpdatedAt = time.Now()
 }

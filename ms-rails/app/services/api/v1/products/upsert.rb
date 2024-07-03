@@ -19,14 +19,26 @@ module Services
               product.brand       = params[:brand]        if params[:brand].present?
               product.price       = params[:price]        if params[:price].present?
               product.description = params[:description]  if params[:description].present?
+              product.stock       = params[:stock]        if params[:stock].present?
 
               product.save!
 
-              Karafka.producer.produce_sync(topic: 'rails-to-go', payload: product.to_json) if !!params[:is_api]
-            end
-            
-            product
+              if !!params[:is_api]
+                begin
+                  Timeout.timeout(5) do
+                    Karafka.producer.produce_sync(topic: 'rails-to-go', payload: product.to_json)
+                  end
+                rescue Timeout::Error
+                  Rails.logger.error("Failed to deliver message to Kafka: Timeout error")
+                rescue Kafka::DeliveryFailed => e
+                  Rails.logger.error("Failed to deliver message to Kafka: #{e.message}")
+                rescue StandardError => e
+                  Rails.logger.error("Failed to deliver message to Kafka: #{e.message}")
+                end
+              end
           end
+
+          product
 
           private
           def product

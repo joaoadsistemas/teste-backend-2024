@@ -3,6 +3,7 @@ package db
 import (
 	"context"
 	"fmt"
+	"sync"
 
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
@@ -10,33 +11,33 @@ import (
 
 var db *mongo.Collection
 var client *mongo.Client
+var once sync.Once
 
 func Connection() *mongo.Collection {
 	var err error
+	once.Do(func() {
+		clientOptions := options.Client().ApplyURI("mongodb://localhost:27017")
 
-	// Set client options
-	clientOptions := options.Client().ApplyURI("mongodb://mongodb:27017")
+		client, err = mongo.Connect(context.Background(), clientOptions)
+		if err != nil {
+			fmt.Println("MONGO: ", err)
+			return
+		}
 
-	// Connect to MongoDB
-	client, err = mongo.Connect(context.Background(), clientOptions)
-	if err != nil {
-		fmt.Println("MONGO: ", err)
-		return nil
-	}
+		err = client.Ping(context.Background(), nil)
+		if err != nil {
+			fmt.Println("MONGO: ", err)
+			return
+		}
 
-	// Check the connection
-	err = client.Ping(context.Background(), nil)
-	if err != nil {
-		fmt.Println("MONGO: ", err)
-		return nil
-	}
-
-	// Set the database and collection variables
-	db = client.Database("teste_backend").Collection("products")
+		db = client.Database("teste_backend").Collection("products")
+	})
 
 	return db
 }
 
 func Disconnect() {
-	client.Disconnect(context.TODO())
+	if client != nil {
+		client.Disconnect(context.TODO())
+	}
 }
